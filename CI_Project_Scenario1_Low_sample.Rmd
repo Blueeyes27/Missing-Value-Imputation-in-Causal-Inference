@@ -141,14 +141,14 @@ imputation_methods <- c("mi", "fiml", "knn25", "knn5", "rf_flexible", "rf_less_f
 
 ```{r}
 # Initialize a data frame to store the coverage probabilities
-coverage_probs <- data.frame(
+coverage_probs_low <- data.frame(
   missing_percentage = numeric(),
   imputation_method = character(),
   coverage_prob = numeric()
 )
 
 # Initialize a data frame to store the average relative biases
-avg_relative_biases <- data.frame(
+avg_relative_biases_low <- data.frame(
   missing_percentage = numeric(),
   imputation_method = character(),
   avg_relative_bias = numeric()
@@ -205,13 +205,13 @@ for (missing_prob in missing_percentages) {
     summarize(avg_relative_bias = mean((ate_estimate - true_ate) / true_ate))
 
   # Store the coverage probabilities and average relative biases for the current missing percentage
-  coverage_probs <- rbind(coverage_probs, data.frame(
+  coverage_probs_low <- rbind(coverage_probs_low, data.frame(
     missing_percentage = missing_prob,
     imputation_method = coverage_prob$imputation_method,
     coverage_prob = coverage_prob$coverage_prob
   ))
 
-  avg_relative_biases <- rbind(avg_relative_biases, data.frame(
+  avg_relative_biases_low <- rbind(avg_relative_biases_low, data.frame(
     missing_percentage = missing_prob,
     imputation_method = avg_relative_bias$imputation_method,
     avg_relative_bias = avg_relative_bias$avg_relative_bias
@@ -222,14 +222,14 @@ for (missing_prob in missing_percentages) {
 
 # Print the coverage probabilities
 cat("Coverage Probabilities:\n")
-print(coverage_probs)
+print(coverage_probs_low)
 
 ```
 
 ```{r}
 # Print the average relative biases
 cat("\nAverage Relative Biases:\n")
-print(avg_relative_biases)
+print(avg_relative_biases_low)
 ```
 
 
