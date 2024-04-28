@@ -1,0 +1,304 @@
+---
+title: "CI_Project_Scenario2_High_Sample_MNAR"
+output: html_document
+date: "2024-04-28"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+# Load the required packages
+library(mice)
+library(lavaan)
+library(VIM)
+library(missForest)
+library(dplyr)
+library(mediation)
+
+# Set the seed for reproducibility
+set.seed(123)
+
+# Define the sample size, number of datasets, and missing data percentages
+n <- 1000
+num_datasets <- 100
+missing_percentages <- seq(0.05, 0.3, by = 0.05)
+
+# Function to generate a dataset based on the given data generating process
+generate_dataset <- function() {
+  # Generate the variables L1, L2, L3, L4, L5, C1
+  L1 <- rnorm(n, mean = 0, sd = 1)
+  L2 <- 0.5 * L1 + rnorm(n, mean = 0, sd = 0.5)
+  L3 <- rnorm(n, mean = 0, sd = 0.3)
+  L4 <- rnorm(n, mean = 0, sd = 0.7)
+  L5 <- rnorm(n, mean = 0, sd = 0.8)
+  C1 <- 65 * L4 + 55 * L5 + rnorm(n, mean = 0, sd = 5)
+
+  # Generate the binary treatment A based on L3 and L4
+  A <- rbinom(n, size = 1, prob = plogis(-1 + 0.4 * L4 + 0.3 * L3))
+
+  # Generate the continuous mediator M
+  M <- 0.9 * A + 0.6 * L1 + 0.2 * L5 + rnorm(n, mean = 0, sd = 0.4)
+
+  # Generate the continuous outcome Y based on A, M, L1, L2, L3
+  Y <- -3 + 1.5 * A + 0.6 * M + 0.1 * L2 + 0.7 * L3 + rnorm(n, mean = 0, sd = 1)
+
+  # Estimate the true NDE and NIE
+  Y_treated_direct <- -3 + 1.5 * 1 + 0.6 * M + 0.1 * L2 + 0.7 * L3 + rnorm(n, mean = 0, sd = 1)
+  Y_untreated_direct <- -3 + 1.5 * 0 + 0.6 * M + 0.1 * L2 + 0.7 * L3 + rnorm(n, mean = 0, sd = 1)
+
+  M_treated <- 0.9 * 1 + 0.6 * L1 + 0.2 * L5 + rnorm(n, mean = 0, sd = 0.4)
+  M_untreated <- 0.9 * 0 + 0.6 * L1 + 0.2 * L5 + rnorm(n, mean = 0, sd = 0.4)
+
+  Y_treated_indirect <- -3 + 1.5 * A + 0.6 * M_treated + 0.1 * L2 + 0.7 * L3 + rnorm(n, mean = 0, sd = 1)
+  Y_untreated_indirect <- -3 + 1.5 * A + 0.6 * M_untreated + 0.1 * L2 + 0.7 * L3 + rnorm(n, mean = 0, sd = 1)
+
+  true_NDE <- mean(Y_treated_direct - Y_untreated_direct)
+  true_NIE <- mean(Y_treated_indirect - Y_untreated_indirect)
+
+  return(list(data = data.frame(L1, L2, L3, L4, L5, C1, A, Y, M), true_NDE = true_NDE, true_NIE = true_NIE))
+}
+
+# Function to introduce MNAR missingness in L1
+introduce_missing_mnar <- function(data, missing_prob) {
+  missing_indices <- sample(1:n, size = round(n * missing_prob), replace = FALSE, prob = pnorm(data$L1))
+  data$L1[missing_indices] <- NA
+  return(data)
+}
+
+# Function to estimate the NDE and NIE using different imputation methods
+estimate_ate <- function(data, method) {
+  if (method == "mi") {
+    # Multiple imputation
+    library(mice)
+    imputed_data <- mice(data, m = 5, method = "pmm", printFlag = FALSE)
+    imputed_data_1 <- complete(imputed_data, 1)
+    imputed_data_2 <- complete(imputed_data, 2)
+    imputed_data_3 <- complete(imputed_data, 3)
+    imputed_data_4 <- complete(imputed_data, 4)
+    imputed_data_5 <- complete(imputed_data, 5)
+    datasets <- list(imputed_data_1 = imputed_data_1, imputed_data_2 = imputed_data_2, imputed_data_3 = imputed_data_3, imputed_data_4 = imputed_data_4, imputed_data_5 = imputed_data_5)
+    mediators <- c("M")
+    outcome <- c("Y")
+    treatment <- c("A", "A", "A", "A", "A")
+    covariates <- c("L1", "L2", "L3")
+    olsols <- mediation::mediations(datasets, treatment, mediators, outcome, covariates,
+                                    families = c("gaussian", "gaussian", "gaussian", "gaussian", "gaussian"), interaction = FALSE, conf.level = .95, sims = 2000)
+    output <- mediation::amelidiate(olsols)
+    NDE <- output$z0
+    NIE <- output$d0
+    ci_NDE_lower <- output$z0.ci[1]
+    ci_NDE_upper <- output$z0.ci[2]
+    ci_NIE_lower <- output$d0.ci[1]
+    ci_NIE_upper <- output$d0.ci[2]
+  } else if (method == "fiml") {
+    # Full information maximum likelihood
+    library(lavaan)
+    model <- '
+      # direct effect
+      Y ~ a1*A + a5*L3
+      
+      # mediator
+      M ~ b1*A
+      Y ~ c3*M + c1*L1 + c2*L2
+      
+      # indirect effect (a*b)
+      NIE := c3*b1
+      
+      # total effect
+      total := a1 + (c3*b1)
+    '
+    fit <- sem(model, data = data, missing = "fiml.x")
+    NDE <- parameterEstimates(fit)[1, 5]
+    NIE <- parameterEstimates(fit)[3, 5] * parameterEstimates(fit)[4, 5]
+    ci_NDE_lower <- parameterEstimates(fit)[1, 9]
+    ci_NDE_upper <- parameterEstimates(fit)[1, 10]
+    ci_NIE_lower <- parameterEstimates(fit)[3, 9] * parameterEstimates(fit)[4, 9]
+    ci_NIE_upper <- parameterEstimates(fit)[3, 10] * parameterEstimates(fit)[4, 10]
+  } else if (method == "knn500") {
+    # KNN regression imputation with K=500
+    library(VIM)
+    imputed_data <- kNN(data, variable = "L1", k = 500)
+    medFit <- glm(M ~ A, family = gaussian, data = imputed_data)
+    outcomeFit <- glm(Y ~ A + M + L1 + L2 + L3, family = gaussian, data = imputed_data)
+    neMod <- mediation::mediate(model.m = medFit, model.y = outcomeFit,
+                                 treat = "A", mediator = "M", data = data_check, robustSE = TRUE,
+                                 sims = 2000)
+    NDE <- neMod$z0
+    NIE <- neMod$d0
+    ci_NDE_lower <- neMod$z0.ci[1]
+    ci_NDE_upper <- neMod$z0.ci[2]
+    ci_NIE_lower <- neMod$d0.ci[1]
+    ci_NIE_upper <- neMod$d0.ci[2]
+  } else if (method == "knn100") {
+    # KNN regression imputation with K=100
+    library(VIM)
+    imputed_data <- kNN(data, variable = "L1", k = 100)
+    medFit <- glm(M ~ A, family = gaussian, data = imputed_data)
+    outcomeFit <- glm(Y ~ A + M + L1 + L2 + L3, family = gaussian, data = imputed_data)
+    neMod <- mediation::mediate(model.m = medFit, model.y = outcomeFit,
+                                 treat = "A", mediator = "M", data = data_check, robustSE = TRUE,
+                                 sims = 2000)
+    NDE <- neMod$z0
+    NIE <- neMod$d0
+    ci_NDE_lower <- neMod$z0.ci[1]
+    ci_NDE_upper <- neMod$z0.ci[2]
+    ci_NIE_lower <- neMod$d0.ci[1]
+    ci_NIE_upper <- neMod$d0.ci[2]
+  } else if (method == "rf_flexible") {
+    # Random Forest imputation with the most flexible settings
+    library(missForest)
+    imputed_data <- missForest(data, ntree = 1000, nodesize = c(5, 5))$ximp
+    medFit <- glm(M ~ A, family = gaussian, data = imputed_data)
+    outcomeFit <- glm(Y ~ A + M + L1 + L2 + L3, family = gaussian, data = imputed_data)
+    neMod <- mediation::mediate(model.m = medFit, model.y = outcomeFit,
+                                 treat = "A", mediator = "M", data = data_check, robustSE = TRUE,
+                                 sims = 2000)
+    NDE <- neMod$z0
+    NIE <- neMod$d0
+    ci_NDE_lower <- neMod$z0.ci[1]
+    ci_NDE_upper <- neMod$z0.ci[2]
+    ci_NIE_lower <- neMod$d0.ci[1]
+    ci_NIE_upper <- neMod$d0.ci[2]
+  } else if (method == "rf_less_flexible") {
+    # Random Forest imputation with the most non-flexible settings
+    library(missForest)
+    imputed_data <- missForest(data, ntree = 5, nodesize = c(200, 5))$ximp
+    medFit <- glm(M ~ A, family = gaussian, data = imputed_data)
+    outcomeFit <- glm(Y ~ A + M + L1 + L2 + L3, family = gaussian, data = imputed_data)
+    neMod <- mediation::mediate(model.m = medFit, model.y = outcomeFit,
+                                 treat = "A", mediator = "M", data = data_check, robustSE = TRUE,
+                                 sims = 2000)
+    NDE <- neMod$z0
+    NIE <- neMod$d0
+    ci_NDE_lower <- neMod$z0.ci[1]
+    ci_NDE_upper <- neMod$z0.ci[2]
+    ci_NIE_lower <- neMod$d0.ci[1]
+    ci_NIE_upper <- neMod$d0.ci[2]
+  }
+
+  return(list(NDE = NDE, NIE = NIE, ci_NDE_lower = ci_NDE_lower, ci_NDE_upper = ci_NDE_upper, ci_NIE_lower = ci_NIE_lower, ci_NIE_upper = ci_NIE_upper))
+}
+
+# Specify the imputation methods to explore
+imputation_methods <- c("mi", "fiml", "knn500", "knn100", "rf_flexible", "rf_less_flexible")
+
+# Initialize a data frame to store the coverage probabilities
+med_coverage_probs_MNAR <- data.frame(
+  missing_percentage = numeric(),
+  imputation_method = character(),
+  coverage_prob_NDE = numeric(),
+  coverage_prob_NIE = numeric()
+)
+
+# Initialize a data frame to store the average relative biases
+med_avg_relative_biases_MNAR <- data.frame(
+  missing_percentage = numeric(),
+  imputation_method = character(),
+  avg_relative_bias_NDE = numeric(),
+  avg_relative_bias_NIE = numeric()
+)
+
+# Iterate over the missing percentages
+for (missing_prob in missing_percentages) {
+  cat("Missing Percentage:", missing_prob * 100, "%\n")
+
+  # Initialize data frames to store the results for the current missing percentage
+  med_current_results <- data.frame(
+    dataset = integer(),
+    imputation_method = character(),
+    NDE_estimate = numeric(),
+    NIE_estimate = numeric(),
+    ci_NDE_lower = numeric(),
+    ci_NDE_upper = numeric(),
+    ci_NIE_lower = numeric(),
+    ci_NIE_upper = numeric(),
+    true_NDE = numeric(),
+    true_NIE = numeric()
+  )
+
+  # Iterate over the datasets
+  for (i in 1:num_datasets) {
+    # Generate a dataset
+    dataset <- generate_dataset()
+    true_NDE <- dataset$true_NDE
+    true_NIE <- dataset$true_NIE
+
+    # Introduce MNAR missingness in L1
+    dataset$data <- introduce_missing_mnar(dataset$data, missing_prob)
+
+    # Iterate over the imputation methods
+    for (method in imputation_methods) {
+      # Estimate NDE, NIE, and confidence intervals using the specified imputation method
+      ate_estimates <- estimate_ate(dataset$data, method)
+
+      # Store the results for the current dataset and imputation method
+      med_current_results <- rbind(med_current_results, data.frame(
+        dataset = i,
+        imputation_method = method,
+        NDE_estimate = ate_estimates$NDE,
+        NIE_estimate = ate_estimates$NIE,
+        ci_NDE_lower = ate_estimates$ci_NDE_lower,
+        ci_NDE_upper = ate_estimates$ci_NDE_upper,
+        ci_NIE_lower = ate_estimates$ci_NIE_lower,
+        ci_NIE_upper = ate_estimates$ci_NIE_upper,
+        true_NDE = true_NDE,
+        true_NIE = true_NIE
+      ))
+    }
+  }
+
+  # Calculate the coverage probability for each imputation method
+  med_coverage_prob <- med_current_results %>%
+    group_by(imputation_method) %>%
+    summarize(
+      coverage_prob_NDE = mean(ci_NDE_lower <= true_NDE & ci_NDE_upper >= true_NDE),
+      coverage_prob_NIE = mean(ci_NIE_lower <= true_NIE & ci_NIE_upper >= true_NIE)
+    )
+
+  # Calculate the average relative bias for each imputation method
+  med_avg_relative_bias <- med_current_results %>%
+    group_by(imputation_method) %>%
+    summarize(
+      avg_relative_bias_NDE = mean((NDE_estimate - true_NDE) / true_NDE),
+      avg_relative_bias_NIE = mean((NIE_estimate - true_NIE) / true_NIE)
+    )
+    
+  # Store the coverage probabilities and average relative biases for the current missing percentage
+  med_coverage_probs_MNAR <- rbind(med_coverage_probs_MNAR, data.frame(
+    missing_percentage = missing_prob,
+    imputation_method = med_coverage_prob$imputation_method,
+    coverage_prob_NDE = med_coverage_prob$coverage_prob_NDE,
+    coverage_prob_NIE = med_coverage_prob$coverage_prob_NIE
+  ))
+  
+  med_avg_relative_biases_MNAR <- rbind(med_avg_relative_biases_MNAR, data.frame(
+    missing_percentage = missing_prob,
+    imputation_method = med_avg_relative_bias$imputation_method,
+    avg_relative_bias_NDE = med_avg_relative_bias$avg_relative_bias_NDE,
+    avg_relative_bias_NIE = med_avg_relative_bias$avg_relative_bias_NIE
+  ))
+  
+  cat("\n")
+}
+
+#Print the coverage probabilities
+cat("Coverage Probabilities:\n")
+print(med_coverage_probs_MNAR)
+
+#Print the average relative biases
+cat("\nAverage Relative Biases:\n")
+print(med_avg_relative_biases_MNAR)
+
+
+write.csv(med_coverage_probs_MNAR, file = "med_coverage_probs_MNAR.csv", row.names = FALSE)
+write.csv(med_avg_relative_biases_MNAR, file = "med_avg_relative_biases_MNAR.csv", row.names = FALSE)
+```
+
+
+```{r}
+write.csv(med_coverage_probs_MNAR, file = "med_coverage_probs_MNAR.csv", row.names = FALSE)
+write.csv(med_avg_relative_biases_MNAR, file = "med_avg_relative_biases_MNAR.csv", row.names = FALSE)
+```
