@@ -72,7 +72,7 @@ estimate_ate <- function(data, method) {
   if (method == "mi") {
     # Multiple imputation
     library(mice)
-    imputed_data <- mice(datasets[[1]], m = 5, method = "pmm", printFlag = FALSE)
+    imputed_data <- mice(data, m = 5, method = "pmm", printFlag = FALSE)
     imputed_data_1 <- complete(imputed_data, 1)
     imputed_data_2 <- complete(imputed_data, 2)
     imputed_data_3 <- complete(imputed_data, 3)
