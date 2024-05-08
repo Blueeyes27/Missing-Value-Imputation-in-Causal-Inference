@@ -117,8 +117,8 @@ estimate_ate <- function(data, method) {
     ci_NDE_upper <- parameterEstimates(fit)[1, 10]
     ci_NIE_lower <- parameterEstimates(fit)[3, 9] * parameterEstimates(fit)[4, 9]
     ci_NIE_upper <- parameterEstimates(fit)[3, 10] * parameterEstimates(fit)[4, 10]
-  } else if (method == "knn500") {
-    # KNN regression imputation with K=500
+  } else if (method == "knn25") {
+    # KNN regression imputation with K=25
     library(VIM)
     imputed_data <- kNN(data, variable = "L1", k = 25)
     medFit <- glm(M ~ A, family = gaussian, data = imputed_data)
@@ -132,8 +132,8 @@ estimate_ate <- function(data, method) {
     ci_NDE_upper <- neMod$z0.ci[2]
     ci_NIE_lower <- neMod$d0.ci[1]
     ci_NIE_upper <- neMod$d0.ci[2]
-  } else if (method == "knn100") {
-    # KNN regression imputation with K=100
+  } else if (method == "knn5") {
+    # KNN regression imputation with K=5
     library(VIM)
     imputed_data <- kNN(data, variable = "L1", k = 5)
     medFit <- glm(M ~ A, family = gaussian, data = imputed_data)
