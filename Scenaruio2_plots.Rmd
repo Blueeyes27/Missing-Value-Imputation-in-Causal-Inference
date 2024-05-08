@@ -1,0 +1,173 @@
+---
+title: "Scenario2_plots"
+author: "Kirtikanth Kalapatapu"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Load the required libraries
+library(tidyverse)
+
+# Read the CSV file
+data <- read_csv("Scenario2_med.csv")
+
+# Create a function to generate the plot
+create_plot <- function(df, sample_size, missing_type, measure) {
+  knn_value <- ifelse(sample_size == 50, "knn5", "knn100")
+  
+  color_values <- c("fiml" = "#FF0000",  # Red
+                    "mi" = "#000080",    # Navy Blue
+                    "rf_less_flexible" = "#800080", # Purple
+                    "knn5" = "#A52A2A",  # Brown
+                    "knn100" = "#A52A2A")  # Brown
+  
+  line_types <- c("fiml" = "solid",
+                  "mi" = "solid",
+                  "rf_less_flexible" = "dashed",
+                  "knn5" = "dashed",
+                  "knn100" = "dashed")
+  
+  plot <- ggplot(df %>% filter(imputation_method %in% c("fiml", "mi", "rf_less_flexible", knn_value)), 
+                 aes(x = missing_percentage, y = abs(get(paste0("average_relative_bias_", measure))) * 100, 
+                     color = imputation_method, linetype = imputation_method)) +
+    geom_line(size = 1) +
+    scale_color_manual(values = color_values) +
+    scale_linetype_manual(values = line_types) +
+    scale_y_continuous(breaks = seq(min(abs(df[,paste0("average_relative_bias_", measure)]) * 100), max(abs(df[,paste0("average_relative_bias_", measure)]) * 100), length.out = 5),
+                       labels = function(x) paste0(format(x, digits = 2), "%")) +
+    labs(title = paste("Sample Size =", sample_size, "| Missing Type =", missing_type, "| Measure =", measure),
+         x = "Missing Percentage", y = "Absolute Average Relative Bias (%)", color = "Imputation Method", linetype = "Imputation Method") +
+    theme_minimal() +
+    theme(plot.title = element_text(face = "bold", size = 14),
+          axis.title = element_text(size = 12),
+          axis.text.y = element_text(size = 10),
+          legend.title = element_text(size = 12),
+          legend.text = element_text(size = 10),
+          legend.position = "bottom") +
+    guides(color = guide_legend(nrow = 2), linetype = guide_legend(nrow = 2))
+  
+  return(plot)
+}
+
+# Filter data and create separate plots for NDE and NIE
+arb_plot_n50_mcar_nde <- create_plot(data %>% filter(sample_size == 50, missing_type == "MCAR"), 50, "MCAR", "NDE")
+arb_plot_n50_mnar_nde <- create_plot(data %>% filter(sample_size == 50, missing_type == "MNAR"), 50, "MNAR", "NDE")
+arb_plot_n1000_mcar_nde <- create_plot(data %>% filter(sample_size == 1000, missing_type == "MCAR"), 1000, "MCAR", "NDE")
+arb_plot_n1000_mnar_nde <- create_plot(data %>% filter(sample_size == 1000, missing_type == "MNAR"), 1000, "MNAR", "NDE")
+
+arb_plot_n50_mcar_nie <- create_plot(data %>% filter(sample_size == 50, missing_type == "MCAR"), 50, "MCAR", "NIE")
+arb_plot_n50_mnar_nie <- create_plot(data %>% filter(sample_size == 50, missing_type == "MNAR"), 50, "MNAR", "NIE")
+arb_plot_n1000_mcar_nie <- create_plot(data %>% filter(sample_size == 1000, missing_type == "MCAR"), 1000, "MCAR", "NIE")
+arb_plot_n1000_mnar_nie <- create_plot(data %>% filter(sample_size == 1000, missing_type == "MNAR"), 1000, "MNAR", "NIE")
+
+# Save the absolute average relative bias plots as PNG files
+ggsave("abs_arb_plot_n50_mcar_nde.png", plot = arb_plot_n50_mcar_nde, width = 8, height = 6, dpi = 300)
+ggsave("abs_arb_plot_n50_mnar_nde.png", plot = arb_plot_n50_mnar_nde, width = 8, height = 6, dpi = 300)
+ggsave("abs_arb_plot_n1000_mcar_nde.png", plot = arb_plot_n1000_mcar_nde, width = 8, height = 6, dpi = 300)
+ggsave("abs_arb_plot_n1000_mnar_nde.png", plot = arb_plot_n1000_mnar_nde, width = 8, height = 6, dpi = 300)
+
+ggsave("abs_arb_plot_n50_mcar_nie.png", plot = arb_plot_n50_mcar_nie, width = 8, height = 6, dpi = 300)
+ggsave("abs_arb_plot_n50_mnar_nie.png", plot = arb_plot_n50_mnar_nie, width = 8, height = 6, dpi = 300)
+ggsave("abs_arb_plot_n1000_mcar_nie.png", plot = arb_plot_n1000_mcar_nie, width = 8, height = 6, dpi = 300)
+ggsave("abs_arb_plot_n1000_mnar_nie.png", plot = arb_plot_n1000_mnar_nie, width = 8, height = 6, dpi = 300)
+
+# Display the plots
+print(arb_plot_n50_mcar_nde)
+print(arb_plot_n50_mnar_nde)
+print(arb_plot_n1000_mcar_nde)
+print(arb_plot_n1000_mnar_nde)
+
+print(arb_plot_n50_mcar_nie)
+print(arb_plot_n50_mnar_nie)
+print(arb_plot_n1000_mcar_nie)
+print(arb_plot_n1000_mnar_nie)
+   
+```
+
+```{r}
+library(tidyverse)
+
+# Read the CSV file
+data <- read_csv("Scenario2_med.csv")
+
+# Create a function to generate the plot
+create_plot <- function(df, sample_size, missing_type, measure) {
+ if (sample_size == 50) {
+   knn_values <- "knn5"
+ } else {
+   knn_values <- "knn100"
+ }
+
+ color_values <- c("fiml" = "#FF6B6B",
+                   "mi" = "#4ECDC4",
+                   "rf_flexible" = "#C7F464",
+                   "knn5" = "#5B84B1",
+                   "knn100" = "#38A3A5")
+
+ line_types <- c("fiml" = "solid",
+                 "mi" = "solid",
+                 "rf_flexible" = "dashed",
+                 "knn5" = "dashed",
+                 "knn100" = "dashed")
+
+ plot <- ggplot(df %>% filter(imputation_method %in% c("fiml", "mi", "rf_flexible", knn_values)), 
+                aes(x = missing_percentage, y = get(paste0("coverage_probability_", measure)) * 100, color = imputation_method, linetype = imputation_method)) +
+   geom_line(size = 1) +
+   scale_color_manual(values = color_values) +
+   scale_linetype_manual(values = line_types) +
+   scale_y_continuous(breaks = seq(80, 100, 2),
+                      limits = c(80, 100),
+                      labels = function(x) paste0(x, "%")) +
+   labs(title = paste("Sample Size =", sample_size, "| Missing Type =", missing_type, "| Measure =", measure),
+        x = "Missing Percentage", y = "Coverage Probability (%)", color = "Imputation Method", linetype = "Imputation Method") +
+   theme_minimal() +
+   theme(plot.title = element_text(face = "bold", size = 14),
+         axis.title = element_text(size = 12),
+         axis.text.y = element_text(size = 10),
+         legend.title = element_text(size = 12),
+         legend.text = element_text(size = 10),
+         legend.position = "bottom") +
+   guides(color = guide_legend(nrow = 2), linetype = guide_legend(nrow = 2))
+
+ return(plot)
+}
+
+# Filter data and create separate plots for NDE and NIE
+cp_plot_n50_mcar_nde <- create_plot(data %>% filter(sample_size == 50, missing_type == "MCAR"), 50, "MCAR", "NDE")
+cp_plot_n50_mnar_nde <- create_plot(data %>% filter(sample_size == 50, missing_type == "MNAR"), 50, "MNAR", "NDE")
+cp_plot_n1000_mcar_nde <- create_plot(data %>% filter(sample_size == 1000, missing_type == "MCAR"), 1000, "MCAR", "NDE")
+cp_plot_n1000_mnar_nde <- create_plot(data %>% filter(sample_size == 1000, missing_type == "MNAR"), 1000, "MNAR", "NDE")
+
+cp_plot_n50_mcar_nie <- create_plot(data %>% filter(sample_size == 50, missing_type == "MCAR"), 50, "MCAR", "NIE")
+cp_plot_n50_mnar_nie <- create_plot(data %>% filter(sample_size == 50, missing_type == "MNAR"), 50, "MNAR", "NIE")
+cp_plot_n1000_mcar_nie <- create_plot(data %>% filter(sample_size == 1000, missing_type == "MCAR"), 1000, "MCAR", "NIE")
+cp_plot_n1000_mnar_nie <- create_plot(data %>% filter(sample_size == 1000, missing_type == "MNAR"), 1000, "MNAR", "NIE")
+
+# Print the coverage probability plots
+print(cp_plot_n50_mcar_nde)
+print(cp_plot_n50_mnar_nde)
+print(cp_plot_n1000_mcar_nde)
+print(cp_plot_n1000_mnar_nde)
+
+print(cp_plot_n50_mcar_nie)
+print(cp_plot_n50_mnar_nie)
+print(cp_plot_n1000_mcar_nie)
+print(cp_plot_n1000_mnar_nie)
+
+# Save the coverage probability plots as PNG files
+ggsave("cp_plot_n50_mcar_nde.png", plot = cp_plot_n50_mcar_nde, width = 8, height = 6, dpi = 300)
+ggsave("cp_plot_n50_mnar_nde.png", plot = cp_plot_n50_mnar_nde, width = 8, height = 6, dpi = 300)
+ggsave("cp_plot_n1000_mcar_nde.png", plot = cp_plot_n1000_mcar_nde, width = 8, height = 6, dpi = 300)
+ggsave("cp_plot_n1000_mnar_nde.png", plot = cp_plot_n1000_mnar_nde, width = 8, height = 6, dpi = 300)
+
+ggsave("cp_plot_n50_mcar_nie.png", plot = cp_plot_n50_mcar_nie, width = 8, height = 6, dpi = 300)
+ggsave("cp_plot_n50_mnar_nie.png", plot = cp_plot_n50_mnar_nie, width = 8, height = 6, dpi = 300)
+ggsave("cp_plot_n1000_mcar_nie.png", plot = cp_plot_n1000_mcar_nie, width = 8, height = 6, dpi = 300)
+ggsave("cp_plot_n1000_mnar_nie.png", plot = cp_plot_n1000_mnar_nie, width = 8, height = 6, dpi = 300)
+```
+```
